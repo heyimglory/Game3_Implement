@@ -1,4 +1,4 @@
-# Hung-yu's implementation of [Spin](http://graphics.cs.cmu.edu/courses/15-466-f17/game2-designs/put-real-link-here) for game3 in 15-466-f17
+# Hung-yu's implementation of [Spin](http://graphics.cs.cmu.edu/courses/15-466-f17/game3-designs/hungyuc/) for game3 in 15-466-f17
 
 ![alt text](https://github.com/heyimglory/Game3_Implement/blob/master/screenshots/start.png)
 
