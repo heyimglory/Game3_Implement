@@ -1,29 +1,18 @@
-NOTE: please fill in the first section with information about your game.
+# Hung-yu's implementation of [Spin](http://graphics.cs.cmu.edu/courses/15-466-f17/game2-designs/put-real-link-here) for game3 in 15-466-f17
 
-# *Game Title*
-
-*Game Title* is *Your Name*'s implementation of [*Design Document*](http://graphics.cs.cmu.edu/courses/15-466-f17/game2-designs/put-real-link-here) for game2 in 15-466-f17.
-
-*Include a Screenshot Here*
-
-## Build Notes
-
-*Include any special notes or steps required to build your game here. If there are no special notes, delete this section.*
+![alt text](https://github.com/heyimglory/Game3_Implement/blob/master/screenshots/start.png)
 
 ## Asset Pipeline
 
-*Briefly describe the asset pipeline for this game. What sorts of source files are used? How are they processed? How are they loaded?*
+The asset pipeline of this game is based on export-meshes.py provided in Base2. It reads out the data of the vertices from a blender file and writes them into binary blob files, which are the data of the meshes and the data of the scene. The blob files can be read by the main program directly because their format are adjusted to meet the loading functions. The part regarding the color of the verices is referencing export-layer.py.
 
 ## Architecture
 
-*Provide a brief introduction to how you implemented the design. Talk about the basic structure of your code.*
+The first step of the program is to load the meshes and set up the scene. After that, in the game loop, the user input that affects the translation and the spinning direction of the spinning stuff is first handled, followed by updating the status of the rotation, the normal, and whether it collides with the ball. Then, the status of the ball, including the friction, whether it collides into the walls or the pillars, is updated. Finally, according to the position of the ball, whether any of the player wins is determined.
 
 ## Reflection
 
-*Reflect on the assignment. What was difficult? What worked well? If you were doing it again, what would you change?*
-
-*Reflect on the design document. What was clear and what was ambiguous? How did you resolve the ambiguities?*
-
+I think the most difficult part of this assignment is to determine the collisions. I feel that my way of detecting them is still kind of approxiamte and brute. Maybe I would try to make the computation more consise if I want to refine it. Also, in the current implementation, the ball sometimes still gets through the plane of the spinning stuff if they collide while the spinning stuff is moving. This is definitely not following the basic physic rules. However, if the ball never gets through the plane, the players can just keep hitting the key that changes the spinning direction to make it fixed and simply push the ball all the way to the other side. This situation could be further clarified in the design document.
 
 # About Base2
 
