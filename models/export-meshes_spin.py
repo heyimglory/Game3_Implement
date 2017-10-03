@@ -3,37 +3,24 @@
 #based on 'export-sprites.py' and 'glsprite.py' from TCHOW Rainbow; code used is released into the public domain.
 
 #Note: Script meant to be executed from within blender, as per:
-#blender --background --python export-meshes_robot.py
+#blender --background --python export-meshes_spin.py
 
-#reads 'island.blend' and writes '../dist/meshes.blob' (meshes) and '../dist/scene.blob' (scene in layer 1)
+#reads 'spin.blend' and writes '../dist/meshes_spin.blob' (meshes) and '../dist/scene_spin.blob' (scene in layer 1)
 
 import sys
 
 import bpy
 import struct
 
-bpy.ops.wm.open_mainfile(filepath='robot.blend')
+bpy.ops.wm.open_mainfile(filepath='D:/2017_fall/Computer_Game_Programming/Game3_Implement/models/Spin.blend')
 
 #names of objects whose meshes to write (not actually the names of the meshes):
 to_write_mesh = [
-	'Balloon1',
-	'Balloon1-Pop',
-	'Balloon2',
-	'Balloon2-Pop',
-	'Balloon3',
-	'Balloon3-Pop',
-	'Crate',
-	'Crate.001',
-	'Crate.002',
-	'Crate.003',
-	'Crate.004',
-	'Crate.005',
-	'Stand',
+	'Ball',
 	'Base',
-	'Link1',
-	'Link2',
-	'Link3',
-	'Cube.001',
+	'Spin',
+	'L_win',
+	'R_win',
 ]
 
 #data contains vertex and normal data from the meshes:
@@ -104,7 +91,7 @@ for name in to_write_mesh:
 assert(vertex_count * (3 * 4 + 3 * 4 + 3 * 4) == len(data))
 
 #write the data chunk and index chunk to an output blob:
-blob = open('D:/2017_fall/Computer_Game_Programming/15-466-f17-base2/dist/meshes_robot.blob', 'wb')
+blob = open('D:/2017_fall/Computer_Game_Programming/Game3_Implement/dist/meshes_spin.blob', 'wb')
 #first chunk: the data
 blob.write(struct.pack('4s',b'v3n3')) #type
 blob.write(struct.pack('I', len(data))) #length
@@ -118,23 +105,16 @@ blob.write(struct.pack('4s',b'idx0')) #type
 blob.write(struct.pack('I', len(index))) #length
 blob.write(index)
 
-print("Wrote " + str(blob.tell()) + " bytes to meshes_robot.blob")
+print("Wrote " + str(blob.tell()) + " bytes to meshes_spin.blob")
 
 #---------------------------------------------------------------------
 #Export scene (object positions for every object on layer one)
 
 #(re-open file because we adjusted mesh users in the export above)
-bpy.ops.wm.open_mainfile(filepath='robot.blend')
+bpy.ops.wm.open_mainfile(filepath='D:/2017_fall/Computer_Game_Programming/Game3_Implement/models/Spin.blend')
 
 to_write_scene = [
-	'Crate',
-	'Crate.001',
-	'Crate.002',
-	'Crate.003',
-	'Crate.004',
-	'Crate.005',
-	'Stand',
-	'Cube.001',
+	'Base',
 ]
 
 #strings chunk will have names
@@ -163,7 +143,7 @@ for obj in bpy.data.objects:
 	scene += struct.pack('3f', transform[2].x, transform[2].y, transform[2].z)
 
 #write the strings chunk and scene chunk to an output blob:
-blob = open('D:/2017_fall/Computer_Game_Programming/15-466-f17-base2/dist/scene_robot.blob', 'wb')
+blob = open('D:/2017_fall/Computer_Game_Programming/Game3_Implement/dist/scene_spin.blob', 'wb')
 #first chunk: the strings
 blob.write(struct.pack('4s',b'str0')) #type
 blob.write(struct.pack('I', len(strings))) #length
@@ -173,5 +153,5 @@ blob.write(struct.pack('4s',b'scn0')) #type
 blob.write(struct.pack('I', len(scene))) #length
 blob.write(scene)
 
-print("Wrote " + str(blob.tell()) + " bytes to scene_robot.blob")
+print("Wrote " + str(blob.tell()) + " bytes to scene_spin.blob")
 

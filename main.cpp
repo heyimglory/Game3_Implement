@@ -8,6 +8,8 @@
 #include <glm/glm.hpp>
 #include <glm/gtc/type_ptr.hpp>
 #include <glm/gtc/matrix_transform.hpp>
+#define GLM_ENABLE_EXPERIMENTAL
+#include <glm/gtx/closest_point.hpp>
 
 #include <chrono>
 #include <iostream>
@@ -17,11 +19,56 @@
 static GLuint compile_shader(GLenum type, std::string const &source);
 static GLuint link_program(GLuint vertex_shader, GLuint fragment_shader);
 
+// detect the collision between a spinning stuff and a pillar
+bool spin_collide_pillars(Scene::Object * spin) {
+	if(distance(spin->transform.position, glm::vec3(2.0f, 0.0f, 0.16f))<0.38f || distance(spin->transform.position, glm::vec3(-2.0f, 0.0f, 0.16f))<0.38f) {
+		return true;
+	}
+	else {
+		return false;
+	}
+}
+
+// detect the collision between two spinning stuff
+bool spins_collide(Scene::Object * spin1, Scene::Object * spin2) {
+	if(distance(spin1->transform.position, spin2->transform.position)<0.55) {
+		return true;
+	}
+	else {
+		return false;
+	}
+}
+
+// detect the collision between the spin stuff and the ball
+bool spin_collide_ball(Scene::Object * spin, Scene::Object * ball) {
+	glm::vec3 n = glm::normalize(glm::mat4_cast(spin->transform.rotation) * glm::vec4(-1.0f, 0.0f, 0.0f, 1.0f));
+	glm::vec3 v = glm::vec3(-1.0f * n.y, n.x, 0.0f);
+	glm::vec3 p1 = spin->transform.position + (0.005f * n);
+	glm::vec3 p2 = p1 + (0.32f * v);
+	glm::vec3 p3 = p2 - (0.01f * n);
+	glm::vec3 p4 = spin->transform.position - (0.005f * n);
+	glm::vec3 p12 = closestPointOnLine(ball->transform.position, p1, p2);
+	glm::vec3 p34 = closestPointOnLine(ball->transform.position, p3, p4);
+	glm::vec3 p14 = closestPointOnLine(ball->transform.position, p1, p4);
+	glm::vec3 p23 = closestPointOnLine(ball->transform.position, p2, p3);
+	float d12 = distance(ball->transform.position, p12);
+	float d34 = distance(ball->transform.position, p34);
+	float d14 = distance(ball->transform.position, p14);
+	float d23 = distance(ball->transform.position, p23);
+	
+	if(d12 + d34 <= 0.2 && d14 + d23 <= 3.0) {
+		return true;
+	}
+	else {
+		return false;
+	}
+}
+
 int main(int argc, char **argv) {
 	//Configuration:
 	struct {
-		std::string title = "Game2: Scene";
-		glm::uvec2 size = glm::uvec2(640, 480);
+		std::string title = "Game3: Spin";
+		glm::uvec2 size = glm::uvec2(1024, 512);
 	} config;
 
 	//------------  initialization ------------
@@ -90,6 +137,7 @@ int main(int argc, char **argv) {
 	GLuint program = 0;
 	GLuint program_Position = 0;
 	GLuint program_Normal = 0;
+	GLuint program_Color = 0;
 	GLuint program_mvp = 0;
 	GLuint program_itmv = 0;
 	GLuint program_to_light = 0;
@@ -100,10 +148,13 @@ int main(int argc, char **argv) {
 			"uniform mat3 itmv;\n"
 			"in vec4 Position;\n"
 			"in vec3 Normal;\n"
+			"in vec3 Color;\n"
 			"out vec3 normal;\n"
+			"out vec3 color;\n"
 			"void main() {\n"
 			"	gl_Position = mvp * Position;\n"
 			"	normal = itmv * Normal;\n"
+			"	color = Color;\n"
 			"}\n"
 		);
 
@@ -111,10 +162,11 @@ int main(int argc, char **argv) {
 			"#version 330\n"
 			"uniform vec3 to_light;\n"
 			"in vec3 normal;\n"
+			"in vec3 color;\n"
 			"out vec4 fragColor;\n"
 			"void main() {\n"
 			"	float light = max(0.0, dot(normalize(normal), to_light));\n"
-			"	fragColor = vec4(light * vec3(1.0, 1.0, 1.0), 1.0);\n"
+			"	fragColor = vec4(light * color, 1.0);\n"
 			"}\n"
 		);
 
@@ -125,7 +177,8 @@ int main(int argc, char **argv) {
 		if (program_Position == -1U) throw std::runtime_error("no attribute named Position");
 		program_Normal = glGetAttribLocation(program, "Normal");
 		if (program_Normal == -1U) throw std::runtime_error("no attribute named Normal");
-
+		program_Color = glGetAttribLocation(program, "Color");
+		if (program_Color == -1U) throw std::runtime_error("no attribute named Color");
 		//look up uniform locations:
 		program_mvp = glGetUniformLocation(program, "mvp");
 		if (program_mvp == -1U) throw std::runtime_error("no uniform named mvp");
@@ -144,19 +197,19 @@ int main(int argc, char **argv) {
 		Meshes::Attributes attributes;
 		attributes.Position = program_Position;
 		attributes.Normal = program_Normal;
+		attributes.Color = program_Color;
 
-		meshes.load("meshes.blob", attributes);
+		meshes.load("meshes_spin.blob", attributes);
 	}
-	
-	//------------ scene ------------
 
+	//------------ scene ------------
 	Scene scene;
 	//set up camera parameters based on window:
-	scene.camera.fovy = glm::radians(60.0f);
+	scene.camera.fovy = glm::radians(40.0f);
 	scene.camera.aspect = float(config.size.x) / float(config.size.y);
 	scene.camera.near = 0.01f;
 	//(transform will be handled in the update function below)
-
+	
 	//add some objects from the mesh library:
 	auto add_object = [&](std::string const &name, glm::vec3 const &position, glm::quat const &rotation, glm::vec3 const &scale) -> Scene::Object & {
 		Mesh const &mesh = meshes.get(name);
@@ -176,7 +229,7 @@ int main(int argc, char **argv) {
 
 
 	{ //read objects to add from "scene.blob":
-		std::ifstream file("scene.blob", std::ios::binary);
+		std::ifstream file("scene_spin.blob", std::ios::binary);
 
 		std::vector< char > strings;
 		//read strings chunk:
@@ -203,30 +256,38 @@ int main(int argc, char **argv) {
 			}
 		}
 	}
+	
+	// spins
+	std::vector< Scene::Object * > spin_stack;
+	spin_stack.emplace_back( &add_object("Spin", glm::vec3(-1.2f, 0.0f, 0.16f), glm::quat(0.0f, 0.0f, 0.0f, 1.0f), glm::vec3(0.05f)) );
+	spin_stack.emplace_back( &add_object("Spin", glm::vec3(1.2f, 0.0f, 0.16f), glm::quat(0.0f, 0.0f, 0.0f, -1.0f), glm::vec3(0.05f)) );
 
-	//create a weird waving tree stack:
-	std::vector< Scene::Object * > tree_stack;
-	tree_stack.emplace_back( &add_object("Tree", glm::vec3(1.0f, 0.0f, 0.2f), glm::quat(1.0f, 0.0f, 0.0f, 0.0f), glm::vec3(0.3f)) );
-	tree_stack.emplace_back( &add_object("Tree", glm::vec3(0.0f, 0.0f, 1.7f), glm::quat(1.0f, 0.0f, 0.0f, 0.0f), glm::vec3(0.9f)) );
-	tree_stack.emplace_back( &add_object("Tree", glm::vec3(0.0f, 0.0f, 1.7f), glm::quat(1.0f, 0.0f, 0.0f, 0.0f), glm::vec3(0.9f)) );
-	tree_stack.emplace_back( &add_object("Tree", glm::vec3(0.0f, 0.0f, 1.7f), glm::quat(1.0f, 0.0f, 0.0f, 0.0f), glm::vec3(0.9f)) );
-
-	for (uint32_t i = 1; i < tree_stack.size(); ++i) {
-		tree_stack[i]->transform.set_parent(&tree_stack[i-1]->transform);
-	}
-
-	std::vector< float > wave_acc(tree_stack.size(), 0.0f);
-
+	std::vector< float > spin_angle(spin_stack.size(), 0.0f);
+	std::vector< float > spin_cloclwise(spin_stack.size(), -1.0f);
+	std::vector< bool > spin_changing(spin_stack.size(), false);
+	std::vector< glm::vec3 > spin_normal(spin_stack.size(), glm::vec3(0.0f));
+	std::vector< bool > hit_ball(spin_stack.size(), false);
+	
+	spin_angle[1] = (float)(1.0f * M_PI);
+	
+	std::vector< Scene::Object * > ball_stack;
+	ball_stack.emplace_back( &add_object("Ball", glm::vec3(0.0f, 0.0f, 0.2f), glm::quat(0.0f, 0.0f, 0.0f, 1.0f), glm::vec3(0.08f)) );
+	
+	std::vector< glm::vec3 > ball_velocity(ball_stack.size(), glm::vec3(0.0f));
+	std::vector< glm::vec3 > ball_accel(ball_stack.size(), glm::vec3(0.0f));
+	
 	glm::vec2 mouse = glm::vec2(0.0f, 0.0f); //mouse position in [-1,1]x[-1,1] coordinates
 
 	struct {
-		float radius = 5.0f;
-		float elevation = 0.0f;
-		float azimuth = 0.0f;
+		float radius = 6.5f;
+		float elevation = (float)(0.38f * M_PI);
+		float azimuth = (float)(0.5f * M_PI);
 		glm::vec3 target = glm::vec3(0.0f, 0.0f, 0.0f);
 	} camera;
-
+	
 	//------------ game loop ------------
+	
+	const Uint8 *keystate = SDL_GetKeyboardState(NULL);
 
 	bool should_quit = false;
 	while (true) {
@@ -257,15 +318,158 @@ int main(int argc, char **argv) {
 		previous_time = current_time;
 
 		{ //update game state:
-			//tree stack:
-			for (uint32_t i = 0; i < tree_stack.size(); ++i) {
-				wave_acc[i] += elapsed * (0.3f + 0.3f * i);
-				wave_acc[i] -= std::floor(wave_acc[i]);
-				float ang = (0.7f * float(M_PI)) * i;
-				tree_stack[i]->transform.rotation = glm::angleAxis(
-					std::cos(wave_acc[i] * 2.0f * float(M_PI)) * (0.2f + 0.1f * i),
-					glm::vec3(std::cos(ang), std::sin(ang), 0.0f)
-				);
+			//spin stuff
+			// right player
+			if(keystate[SDL_SCANCODE_RIGHT]) {	
+				if(spin_stack[0]->transform.position.x >= -2.95f) {
+					spin_stack[0]->transform.position.x -= 1.2f * elapsed;
+					if(spin_collide_pillars(spin_stack[0]) || spins_collide(spin_stack[0], spin_stack[1])) {
+						spin_stack[0]->transform.position.x += 1.2f * elapsed;
+					}
+				}
+			} else if(keystate[SDL_SCANCODE_LEFT]) {
+				if(spin_stack[0]->transform.position.x <= 2.95f) {
+					spin_stack[0]->transform.position.x += 1.2f * elapsed;
+					if(spin_collide_pillars(spin_stack[0]) || spins_collide(spin_stack[0], spin_stack[1])) {
+						spin_stack[0]->transform.position.x -= 1.2f * elapsed;
+					}
+				}
+			}
+			if(keystate[SDL_SCANCODE_UP]) {	
+				if(spin_stack[0]->transform.position.y >= -1.4f) {
+					spin_stack[0]->transform.position.y -= 1.2f * elapsed;
+					if(spin_collide_pillars(spin_stack[0]) || spins_collide(spin_stack[0], spin_stack[1])) {
+						spin_stack[0]->transform.position.y += 1.2f * elapsed;
+					}
+				}
+			} else if(keystate[SDL_SCANCODE_DOWN]) {
+				if(spin_stack[0]->transform.position.y <= 1.4f) {
+					spin_stack[0]->transform.position.y += 1.2f * elapsed;
+					if(spin_collide_pillars(spin_stack[0]) || spins_collide(spin_stack[0], spin_stack[1])) {
+						spin_stack[0]->transform.position.y -= 1.2f * elapsed;
+					}
+				}
+			}
+			// handle changing the direction of the spinning
+			if(keystate[SDL_SCANCODE_SLASH]) {
+				if(!spin_changing[0]) {
+					spin_cloclwise[0] *= -1.0f;
+				}
+				spin_changing[0] = true;
+			} else {
+				spin_changing[0] = false;
+			}
+			// left player
+			if(keystate[SDL_SCANCODE_D]) {	
+				if(spin_stack[1]->transform.position.x >= -2.95f) {
+					spin_stack[1]->transform.position.x -= 1.2f * elapsed;
+					if(spin_collide_pillars(spin_stack[1]) || spins_collide(spin_stack[0], spin_stack[1])) {
+						spin_stack[1]->transform.position.x += 1.2f * elapsed;
+					}
+				}
+			} else if(keystate[SDL_SCANCODE_A]) {
+				if(spin_stack[1]->transform.position.x <= 2.95f) {
+					spin_stack[1]->transform.position.x += 1.2f * elapsed;
+					if(spin_collide_pillars(spin_stack[1]) || spins_collide(spin_stack[0], spin_stack[1])) {
+						spin_stack[1]->transform.position.x -= 1.2f * elapsed;
+					}
+				}
+			}
+			if(keystate[SDL_SCANCODE_W]) {	
+				if(spin_stack[1]->transform.position.y >= -1.4f) {
+					spin_stack[1]->transform.position.y -= 1.2f * elapsed;
+					if(spin_collide_pillars(spin_stack[1]) || spins_collide(spin_stack[0], spin_stack[1])) {
+						spin_stack[1]->transform.position.y += 1.2f * elapsed;
+					}
+				}
+			} else if(keystate[SDL_SCANCODE_S]) {
+				if(spin_stack[1]->transform.position.y <= 1.4f) {
+					spin_stack[1]->transform.position.y += 1.2f * elapsed;
+					if(spin_collide_pillars(spin_stack[1]) || spins_collide(spin_stack[0], spin_stack[1])) {
+						spin_stack[1]->transform.position.y -= 1.2f * elapsed;
+					}
+				}
+			}
+			
+			// handle changing the direction of the spinning
+			if(keystate[SDL_SCANCODE_Q]) {
+				if(!spin_changing[1]) {
+					spin_cloclwise[1] *= -1.0f;
+				}
+				spin_changing[1] = true;
+			} else {
+				spin_changing[1] = false;
+			}				
+			
+			for(uint32_t i = 0; i < spin_stack.size(); i++) {
+				// update rotation
+				spin_angle[i] += 5.0f * spin_cloclwise[i] * elapsed;
+				if(spin_angle[i] > 2 * M_PI) {
+					spin_angle[i] -= (float)(2.0f * M_PI);
+				} else if(spin_angle[i] < -2 * M_PI) {
+					spin_angle[i] += (float)(2.0f * M_PI);
+				}
+				spin_stack[i]->transform.rotation = glm::angleAxis(spin_angle[i], glm::vec3(0.0f, 0.0f, 1.0f));
+				// update nornal
+				spin_normal[i] =  -1.0f * spin_cloclwise[i] * glm::normalize(glm::mat4_cast(spin_stack[i]->transform.rotation) * glm::vec4(-1.0f, 0.0f, 0.0f, 1.0f));
+
+				// detect collision with ball
+				if(spin_collide_ball(spin_stack[i], ball_stack[0])) {
+					if(!hit_ball[i]) {
+						ball_velocity[0] += 2.6f * spin_normal[i];
+					}
+					hit_ball[i] = true;
+				} else {
+					hit_ball[i] = false;
+				}
+			}
+			
+			// handle friction on different region
+			if(distance(ball_stack[0]->transform.position, glm::vec3(0.0f)) < 1.0f) {
+				if(std::abs(ball_velocity[0].x) > std::abs(0.001f * normalize(ball_velocity[0]).x)) {
+					ball_velocity[0] -= 0.003f * normalize(ball_velocity[0]);
+				} else {
+					ball_velocity[0] = glm::vec3(0.0f);
+				}
+			} else {
+				if(std::abs(ball_velocity[0].x) > std::abs(0.01f * normalize(ball_velocity[0]).x)) {
+					ball_velocity[0] -= 0.02f * normalize(ball_velocity[0]);
+				} else {
+					ball_velocity[0] = glm::vec3(0.0f);
+				}
+			}
+			
+			// detect collision between the ball and the pillars
+			if(distance(ball_stack[0]->transform.position, glm::vec3(2.0f, 0.0f, 0.2f))<0.2f) {
+				glm::vec3 n = normalize(ball_stack[0]->transform.position - glm::vec3(2.0f, 0.0f, 0.2f));
+				float magnitude = ball_velocity[0].x / normalize(ball_velocity[0]).x;
+				ball_velocity[0] *= 0.8f;
+				ball_velocity[0] += magnitude * n;
+			} else if(distance(ball_stack[0]->transform.position, glm::vec3(-2.0f, 0.0f, 0.2f))<0.2f) {
+				glm::vec3 n = normalize(ball_stack[0]->transform.position - glm::vec3(-2.0f, 0.0f, 0.2f));
+				float magnitude = ball_velocity[0].x / normalize(ball_velocity[0]).x;
+				ball_velocity[0] *= 0.8f;
+				ball_velocity[0] += magnitude * n;
+			}
+			ball_stack[0]->transform.position += ball_velocity[0] * elapsed;
+			// detect collision between the ball and walls
+			if(ball_stack[0]->transform.position.y >= 1.52f || ball_stack[0]->transform.position.y <= -1.52) {
+				ball_velocity[0].y *= -1.0f;
+			}
+			
+			// determine winning player
+			if(ball_stack[0]->transform.position.x >= 3.1f) {
+				ball_velocity[0] = glm::vec3(0.0f);
+				ball_stack[0]->transform.position = glm::vec3(0.0f, 0.0f, -1.0f);
+				std::vector< Scene::Object * > win_stack;
+				win_stack.emplace_back( &add_object("R_win", glm::vec3(0.0f, 0.8f, 1.8f), glm::quat(0.0f, 0.0f, 0.0f, 1.0f), glm::vec3(2.0f, 1.0f, 1.0f)) );
+				win_stack[0]->transform.rotation = glm::angleAxis(-0.5f, glm::vec3(1.0f, 0.0f, 0.0f));
+			} else if(ball_stack[0]->transform.position.x <= -3.1f) {
+				ball_velocity[0] = glm::vec3(0.0f);
+				ball_stack[0]->transform.position = glm::vec3(0.0f, 0.0f, -1.0f);
+				std::vector< Scene::Object * > win_stack;
+				win_stack.emplace_back( &add_object("L_win", glm::vec3(0.0f, 0.8f, 1.8f), glm::quat(0.0f, 0.0f, 0.0f, 1.0f), glm::vec3(2.0f, 1.0f, 1.0f)) );
+				win_stack[0]->transform.rotation = glm::angleAxis(-0.5f, glm::vec3(1.0f, 0.0f, 0.0f));
 			}
 
 			//camera:
@@ -295,7 +499,7 @@ int main(int argc, char **argv) {
 
 		{ //draw game state:
 			glUseProgram(program);
-			glUniform3fv(program_to_light, 1, glm::value_ptr(glm::normalize(glm::vec3(0.0f, 1.0f, 10.0f))));
+			glUniform3fv(program_to_light, 1, glm::value_ptr(glm::normalize(glm::vec3(0.0f, 0.0f, 2.0f))));
 			scene.render();
 		}
 
